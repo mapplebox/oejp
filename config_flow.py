@@ -8,7 +8,15 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 
 from .api import OEJPApi, OEJPAuthError, OEJPApiError
-from .const import DOMAIN, CONF_EMAIL, CONF_PASSWORD, CONF_API_URL, DEFAULT_API_URL
+from .const import (
+    DOMAIN,
+    CONF_EMAIL,
+    CONF_PASSWORD,
+    CONF_API_URL,
+    CONF_YEN_PER_KWH,
+    DEFAULT_API_URL,
+    DEFAULT_YEN_PER_KWH,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,6 +49,9 @@ class OEJPConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_PASSWORD: user_input[CONF_PASSWORD],
                         CONF_API_URL: user_input.get(CONF_API_URL) or DEFAULT_API_URL,
                     },
+                    options={
+                        CONF_YEN_PER_KWH: float(DEFAULT_YEN_PER_KWH),
+                    },
                 )
             except OEJPAuthError:
                 errors["base"] = "auth"
@@ -59,3 +70,38 @@ class OEJPConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+
+    @staticmethod
+    def async_get_options_flow(config_entry):
+        return OEJPOptionsFlowHandler(config_entry)
+
+
+class OEJPOptionsFlowHandler(config_entries.OptionsFlow):
+    def __init__(self, config_entry):
+        self._config_entry = config_entry
+
+    async def async_step_init(self, user_input=None) -> FlowResult:
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            try:
+                yen = float(user_input.get(CONF_YEN_PER_KWH, DEFAULT_YEN_PER_KWH))
+            except Exception:
+                errors["base"] = "invalid_yen"
+            else:
+                return self.async_create_entry(
+                    title="",
+                    data={
+                        CONF_YEN_PER_KWH: yen,
+                    },
+                )
+
+        current = self._config_entry.options.get(CONF_YEN_PER_KWH, DEFAULT_YEN_PER_KWH)
+
+        schema = vol.Schema(
+            {
+                vol.Optional(CONF_YEN_PER_KWH, default=float(current)): vol.Coerce(float),
+            }
+        )
+
+        return self.async_show_form(step_id="init", data_schema=schema, errors=errors)

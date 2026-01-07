@@ -55,7 +55,7 @@ def _jwt_exp(token: str) -> datetime | None:
 class HHReading:
     start_at: datetime
     end_at: datetime
-    version: str | None   # FIX: kann "DAILY" sein
+    version: str | None
     value: Decimal
 
 
@@ -208,6 +208,16 @@ class OEJPApi:
     def _midnight_jst(d: date) -> datetime:
         return datetime(d.year, d.month, d.day, 0, 0, 0, tzinfo=JST)
 
+    @staticmethod
+    def _first_day_of_month(d: date) -> date:
+        return date(d.year, d.month, 1)
+
+    @staticmethod
+    def _first_day_of_prev_month(d: date) -> date:
+        if d.month == 1:
+            return date(d.year - 1, 12, 1)
+        return date(d.year, d.month - 1, 1)
+
     async def async_test_auth(self) -> None:
         await self._ensure_auth()
         now = datetime.now(tz=JST)
@@ -247,7 +257,7 @@ class OEJPApi:
         readings: list[HHReading] = []
         for r in raw:
             ver = r.get("version")
-            ver_s = str(ver) if ver is not None else None  # FIX: no int()
+            ver_s = str(ver) if ver is not None else None
             readings.append(
                 HHReading(
                     start_at=_parse_dt(r["startAt"]),
@@ -262,30 +272,60 @@ class OEJPApi:
 
     async def async_get_dashboard(self) -> dict[str, Any]:
         now_jst = datetime.now(tz=JST)
-        today_mid = self._midnight_jst(now_jst.date())
+
+        today = now_jst.date()
+        today_mid = self._midnight_jst(today)
         yday_mid = today_mid - timedelta(days=1)
 
-        readings = await self.async_get_hh_readings(yday_mid, now_jst)
+        month_start = self._midnight_jst(self._first_day_of_month(today))
+        prev_month_start = self._midnight_jst(self._first_day_of_prev_month(today))
+        prev_month_end = month_start
+
+        recent_start = now_jst - timedelta(hours=12)
+
+        recent = await self.async_get_hh_readings(recent_start, now_jst)
+        range_months = await self.async_get_hh_readings(prev_month_start, now_jst)
 
         today_kwh = Decimal("0")
         yday_kwh = Decimal("0")
-        last_kwh: Decimal | None = None
-        last_end: datetime | None = None
+        mtd_kwh = Decimal("0")
+        last_month_kwh = Decimal("0")
 
-        for r in readings:
+        last_kwh: Decimal | None = None
+        last_end_jst: datetime | None = None
+
+        for r in range_months:
             st_jst = r.start_at.astimezone(JST)
+            if st_jst >= month_start:
+                mtd_kwh += r.value
+            elif st_jst >= prev_month_start and st_jst < prev_month_end:
+                last_month_kwh += r.value
+
             if st_jst >= today_mid:
                 today_kwh += r.value
-            else:
+            elif st_jst >= yday_mid and st_jst < today_mid:
                 yday_kwh += r.value
 
-            last_kwh = r.value
-            last_end = r.end_at.astimezone(JST)
+        if recent:
+            last_kwh = recent[-1].value
+            last_end_jst = recent[-1].end_at.astimezone(JST)
+
+        recent_compact: list[dict[str, Any]] = []
+        for r in recent:
+            recent_compact.append(
+                {
+                    "end_jst": r.end_at.astimezone(JST).isoformat(),
+                    "kwh": float(r.value),
+                }
+            )
 
         return {
             "account_number": self._account_number or "",
             "today_kwh": float(today_kwh),
             "yesterday_kwh": float(yday_kwh),
+            "month_to_date_kwh": float(mtd_kwh),
+            "last_month_kwh": float(last_month_kwh),
             "last_half_hour_kwh": float(last_kwh) if last_kwh is not None else None,
-            "last_interval_end_jst": last_end.isoformat() if last_end else None,
+            "last_interval_end_jst": last_end_jst.isoformat() if last_end_jst else None,
+            "recent_readings": recent_compact,
         }

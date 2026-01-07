@@ -14,7 +14,18 @@
     "error": {
       "auth": "Authentication failed",
       "cannot_connect": "Could not connect",
-      "unknown": "Unexpected error"
+      "unknown": "Unexpected error",
+      "invalid_yen": "Invalid yen per kWh"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Octopus Energy Japan options",
+        "data": {
+          "yen_per_kwh": "Yen per kWh"
+        }
+      }
     }
   }
 }
