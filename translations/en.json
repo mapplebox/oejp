@@ -1,0 +1,20 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Octopus Energy Japan",
+        "description": "Enter your Octopus Energy Japan login",
+        "data": {
+          "email": "Email",
+          "password": "Password",
+          "api_url": "API URL"
+        }
+      }
+    },
+    "error": {
+      "auth": "Authentication failed",
+      "cannot_connect": "Could not connect",
+      "unknown": "Unexpected error"
+    }
+  }
+}
